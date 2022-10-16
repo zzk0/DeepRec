@@ -39,6 +39,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework.embedding import config_pb2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.ops import array_ops
@@ -54,9 +56,11 @@ from tensorflow.python.training import distribution_strategy_context
 
 class SlotConfig:
   def __init__(self,
-               slot_num=1, slot_index=0):
+               slot_num=1, slot_index=0,
+               slot_type=config_pb2.SlotType.EMBEDDING_VARIABLE):
     self.slot_num = slot_num
     self.slot_index = slot_index
+    self.slot_type = slot_type
 
 def _is_embedding(v):
   """Returns true if v is something you get from a embedding variable."""
@@ -91,7 +95,6 @@ def _create_slot_var(primary, val, scope, validate_shape, shape, dtype, slot_con
         steps_to_live=primary._steps_to_live,
         ht_partition_num=primary._ht_partition_num)
     else:
-      slotnum_op = ops.convert_to_tensor(slot_config.slot_num, preferred_dtype=dtypes.int64)
       filter_strategy = None
       if primary._filter_freq != 0:
         if primary._max_element_size != 0:
@@ -101,22 +104,40 @@ def _create_slot_var(primary, val, scope, validate_shape, shape, dtype, slot_con
                                                 counter_type=primary._counter_type)
         else:
           filter_strategy = variables.CounterFilter(filter_freq=primary._filter_freq)
-      slot = variable_scope.get_embedding_variable_v2_internal(
-        scope, initializer=val, trainable=False,
-        embedding_dim=shape, key_dtype=primary._invalid_key_type,
-        validate_shape=validate_shape, 
-        evconfig=variables.EmbeddingVariableConfig(
-          steps_to_live=primary._steps_to_live,
-          handle_name=primary._block_handle_name,
-          emb_index=primary._emb_index,
-          block_num=primary.block_num,
-          slot_index=slot_config.slot_index,
-          primary=primary._primary,
-          primary_slotnum_op=slotnum_op,
-          storage_type=primary.storage_type,
-          l2_weight_threshold=primary._l2_weight_threshold,
-          filter_strategy=filter_strategy)
-          )
+      if slot_config.slot_type is config_pb2.SlotType.EMBEDDING_VARIABLE:
+        primary._init_op._set_attr("slot_num", attr_value_pb2.AttrValue(i=slot_config.slot_num))
+        primary._slot_num = slot_config.slot_num
+        emb_index = primary._emb_index
+        if primary.block_num > 1:
+          primary = primary._primary
+        slot = variable_scope.get_embedding_variable_v2_internal(
+          scope, initializer=val, trainable=False,
+          embedding_dim=shape, key_dtype=primary._invalid_key_type,
+          validate_shape=validate_shape, 
+          evconfig=variables.EmbeddingVariableConfig(
+            steps_to_live=primary._steps_to_live,
+            handle_name=primary._block_handle_name,
+            emb_index=emb_index,
+            block_num=primary.block_num,
+            slot_index=slot_config.slot_index,
+            primary=primary._primary,
+            slot_num=slot_config.slot_num,
+            storage_type=primary.storage_type,
+            storage_path=primary._storage_path,
+            storage_size=primary._storage_size,
+            storage_cache_strategy=primary._storage_cache_strategy,
+            l2_weight_threshold=primary._l2_weight_threshold,
+            filter_strategy=filter_strategy)
+        )
+      else:
+        slot = variable_scope.get_variable(
+          scope,
+          initializer=val,
+          trainable=False,
+          use_resource=use_resource,
+          shape=shape,
+          dtype=dtype,
+          validate_shape=validate_shape)
   else:
     slot = variable_scope.get_variable(
         scope,
@@ -153,7 +174,8 @@ def _create_slot_var(primary, val, scope, validate_shape, shape, dtype, slot_con
           slice_info.full_shape[:n],
           slice_info.var_offset[:n],
           slice_info.var_shape[:n],
-          var_full_name=slice_info.var_full_name + "/" + real_slot_name))
+          var_full_name=slice_info.var_full_name + "/" +
+            real_slot_name if slice_info.var_full_name else None))
     else:
       slot._set_save_slice_info(
             slice_info.slot_save_slice_info(real_slot_name))

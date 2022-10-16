@@ -3990,6 +3990,15 @@ class Graph(object):
       if name in self._collections:
         del self._collections[name]
 
+  def get_variale_by_name(self, name):
+    """
+     Get Variable/ResourceVariable by name
+    """
+    for var in get_collection(GraphKeys.GLOBAL_VARIABLES):
+      if hasattr(var, '_shared_name'):
+        if var._shared_name == name:
+          return var
+
   @tf_contextlib.contextmanager
   def _original_op(self, op):
     """Python 'with' handler to help annotate ops with their originator.
@@ -6092,6 +6101,9 @@ class GraphKeys(object):
 
   EV_INIT_VAR_OPS = "ev_init_var_ops"
   EV_INIT_SLOT_OPS = "ev_init_slot_ops"
+
+  # Key to collect embedding lookup output result.
+  ASYNC_EMBEDDING_OUTPUT_TENSORS = "async_embedding_output_tensors"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"

@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 #include <string>
+#include <pthread.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -61,7 +62,10 @@ class DirectSession : public Session {
   // closed. This ensures that Reset requests from the 'factory' don't get sent
   // to sessions that are already closed.
   DirectSession(const SessionOptions& options, const DeviceMgr* device_mgr,
-                DirectSessionFactory* factory);
+                bool own_device_mgr,
+                DirectSessionFactory* factory,
+                const std::vector<unsigned>& visible_cpus);
+
   ~DirectSession() override;
 
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
@@ -102,7 +106,7 @@ class DirectSession : public Session {
       std::vector<DeviceAttributes>* response) override;
   ::tensorflow::Status Close() override;
   ::tensorflow::Status LocalDeviceManager(const DeviceMgr** output) override {
-    *output = device_mgr_.get();
+    *output = device_mgr_;
     return ::tensorflow::Status::OK();
   }
 
@@ -126,6 +130,9 @@ class DirectSession : public Session {
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
   const SessionOptions& options() const { return options_; }
+  bool sync_on_finish() const { return sync_on_finish_; }
+  void set_sync_on_finish(bool flag) { sync_on_finish_ = flag; }
+  static mutex capture_run_mu_;
 
  private:
   // For access to collective_graph_key_.
@@ -253,6 +260,9 @@ class DirectSession : public Session {
       RunMetadata* run_metadata,
       const thread::ThreadPoolOptions& threadpool_options);
 
+  // Returns whether enable tracking of tensorpool allocator
+  bool EnableTensorPoolTracking(ExecutorsAndKeys* executors_and_keys);
+
   // Returns whether inter-op execution uses a global pool or the input
   // `run_options` requests being run on inter_op_thread_pool = 0 in case
   // multiple pools are configured.
@@ -319,7 +329,8 @@ class DirectSession : public Session {
   const SessionOptions options_;
 
   // Device structures.
-  const std::unique_ptr<const DeviceMgr> device_mgr_;
+  bool own_device_mgr_;
+  const DeviceMgr* device_mgr_;
   std::vector<Device*> devices_;  // not owned
   DeviceSet device_set_;
 
@@ -418,6 +429,9 @@ class DirectSession : public Session {
   // Otherwise run in global thread pool, session owned thread pool or handler
   // pool according to other specifications of RunOptions and ConfigProto.
   bool run_in_caller_thread_ = false;
+
+  // If true, will use cost_model_executor to run the graph.
+  bool run_cost_model_executor_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 

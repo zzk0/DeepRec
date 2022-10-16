@@ -80,6 +80,7 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
+    "cuda_library",
     "tf_cuda_only_cc_test",
     "tf_features_nomodules_if_android",
     "tf_features_nomodules_if_emscripten",
@@ -127,6 +128,8 @@ load(
     "tf_additional_numa_deps",
     "tf_additional_numa_lib_defines",
     "tf_additional_star_lib_defines",
+    "tf_additional_pmem_lib_defines",
+    "tf_additional_gpu_ev_lib_defines",
     "tf_additional_test_deps",
     "tf_additional_verbs_lib_defines",
     "tf_grpc_service_all",
@@ -954,6 +957,7 @@ tf_cuda_library(
         "util/matmul_autotune.h",
         "util/util.h",
         "util/work_sharder.h",
+        "util/test_util.h",
     ] + select({
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -969,6 +973,8 @@ tf_cuda_library(
         ":framework_internal",
         "@com_google_absl//absl/base",
         "@sparsehash_c11//:dense_hash_map",
+        "@com_github_google_leveldb//:leveldb",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 
@@ -1014,7 +1020,11 @@ cc_library(
         "framework/type_traits.h",
     ] + select({
         "//tensorflow:with_pmem_support": [
-            "framework/pmem_allocator.cc"
+            "framework/pmem_allocator.cc",
+            "framework/experimental_pmem_allocator.cc",
+            "framework/experimental_pmem_allocator_utils.cc",
+            "framework/experimental_pmem_allocator.h",
+            "framework/experimental_pmem_allocator_utils.h",
         ],
         "//conditions:default": [],
     }),
@@ -1027,7 +1037,8 @@ cc_library(
     linkopts = select({
         "//tensorflow:with_pmem_support": [
             "-L/usr/local/lib",
-            "-lmemkind"
+            "-lmemkind",
+            "-lpmem",
         ],
         "//conditions:default": [],
     }),
@@ -1113,6 +1124,15 @@ cc_library(
 )
 
 cc_library(
+    name = "framework_types_hdr",
+    hdrs = [
+        "framework/types.h",
+    ],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "framework_lite",
     srcs = [
         "//tensorflow/core/platform:legacy_minimal_lib_srcs",
@@ -1154,6 +1174,7 @@ cc_library(
 tf_gen_op_libs(
     is_external = False,
     op_lib_names = [
+        "parquet_ops",
         "batch_ops",
         "bitwise_ops",
         "boosted_trees_ops",
@@ -1173,6 +1194,7 @@ tf_gen_op_libs(
         "function_ops",
         "functional_ops",
         "fused_embedding_ops",
+        "fused_l2_normalize_ops",
         "hash_ops",
         "hash_training_ops",
         "fuserecv_ops",
@@ -1275,7 +1297,7 @@ tf_gen_op_libs(
 tf_gen_op_libs(
     is_external = False,
     op_lib_names = [
-        "data_buffer_ops"
+        "tensor_buffer_ops"
     ],
     deps = [":lib"],
 )
@@ -1409,6 +1431,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
+        ":parquet_ops_op_lib",
         ":audio_ops_op_lib",
         ":batch_ops_op_lib",
         ":bitwise_ops_op_lib",
@@ -1430,6 +1453,7 @@ cc_library(
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
         ":fused_embedding_ops_op_lib",
+        ":fused_l2_normalize_ops_op_lib",
         ":fuserecv_ops_op_lib",
         ":hash_ops_op_lib",
         ":hash_training_ops_op_lib",
@@ -1613,13 +1637,16 @@ cc_library(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:fused_embedding_ops",
+        "//tensorflow/core/kernels/data:parquet_dataset_ops",
+        "//tensorflow/core/kernels:fused_l2_normalize_ops",
+        "//tensorflow/core/kernels:fused_layer_normalize_ops",
         "//tensorflow/core/kernels:grappler",
         "//tensorflow/core/kernels:hash_ops",
         "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:kv_variable_ops",
-        "//tensorflow/core/kernels:data_buffer_ops",
+        "//tensorflow/core/kernels:tensor_buffer_ops",
         "//tensorflow/core/kernels:work_queue_ops",
         "//tensorflow/core/kernels:linalg",
         "//tensorflow/core/kernels:lookup",
@@ -2495,7 +2522,9 @@ LIB_INTERNAL_DEFINES = (
     tf_additional_mpi_lib_defines() +
     tf_additional_gdr_lib_defines() +
     tf_additional_numa_lib_defines() +
-    tf_additional_star_lib_defines()
+    tf_additional_star_lib_defines() +
+    tf_additional_pmem_lib_defines() +
+    tf_additional_gpu_ev_lib_defines()
 )
 
 cc_library(
@@ -2958,6 +2987,8 @@ tf_cuda_library(
             "framework/allocator.cc",
             "framework/cpu_allocator_impl.cc",
             "framework/pmem_allocator.cc",
+            "framework/experimental_pmem_allocator.*",
+            "framework/experimental_pmem_allocator_utils.*",
             "framework/allocator_registry.cc",
             "framework/tracking_allocator.cc",
             "example/example_parser_configuration.*",
@@ -2972,6 +3003,8 @@ tf_cuda_library(
             "util/stats_calculator.*",
             "util/version_info.cc",
             "util/env_var.cc",
+            "framework/embedding/batch.cu.cc",
+            "framework/embedding/batch.h"
         ],
     ) + select({
         "//tensorflow:windows": [],
@@ -3002,6 +3035,8 @@ tf_cuda_library(
         ":stats_calculator_portable",
         ":version_lib",
         ":framework_internal_impl_hash_table",
+        ":embedding_gpu",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3011,7 +3046,6 @@ tf_cuda_library(
         "//tensorflow/core:framework/bfloat16",
         "//tensorflow/core:framework/numeric_types",
         "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/profiler:nvtx_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
@@ -3055,7 +3089,7 @@ tf_cuda_library(
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core:gpu_id",
         "//third_party/eigen3",
-        "core_cpu_lib",
+        "@sparsehash_c11//:dense_hash_map",
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
@@ -3155,6 +3189,7 @@ GRAPH_HDRS = [
     "graph/graph_def_builder_util.h",
     "graph/graph_partition.h",
     "graph/mkl_layout_pass.h",
+    "graph/mkl_layout_pass_lists.h",
     "graph/mkl_tfconversion_pass.h",
     "graph/node_builder.h",
     "graph/optimizer_cse.h",
@@ -3305,6 +3340,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/lower_functional_ops.h",
     "common_runtime/lower_while_op.h",
     "common_runtime/memory_planner.h",
+    "common_runtime/gpu_memory_planner.h",
     "common_runtime/memory_types.h",
     "common_runtime/metrics.h",
     "common_runtime/mkl_cpu_allocator.h",
@@ -3326,9 +3362,11 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/session_factory.h",
     "common_runtime/simple_propagator_state.h",
     "common_runtime/single_threaded_cpu_device.h",
+    "common_runtime/size_class.h",
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/tensorpool_allocator.h",
+    "common_runtime/gpu_tensorpool_allocator.h",
     "common_runtime/threadpool_device.h",
     "common_runtime/process_state.h",
     "common_runtime/pool_allocator.h",
@@ -3350,6 +3388,7 @@ tf_cuda_library(
         "common_runtime/colocation_graph.cc",
         "common_runtime/constant_folding.cc",
         "common_runtime/copy_tensor.cc",
+        "common_runtime/costmodel.h",
         "common_runtime/costmodel_manager.cc",
         "common_runtime/debugger_state_interface.cc",
         "common_runtime/device.cc",
@@ -3368,6 +3407,7 @@ tf_cuda_library(
         "common_runtime/input_colocation_exemption_registry.cc",
         "common_runtime/inspecting_placer.cc",
         "common_runtime/isolate_placer_inspection_required_ops_pass.cc",
+        "common_runtime/kernel_stat.h",
         "common_runtime/local_device.cc",
         "common_runtime/lower_case_op.cc",
         "common_runtime/lower_function_call_op.cc",
@@ -3375,6 +3415,7 @@ tf_cuda_library(
         "common_runtime/lower_if_op.cc",
         "common_runtime/lower_while_op.cc",
         "common_runtime/memory_planner.cc",
+        "common_runtime/gpu_memory_planner.cc",
         "common_runtime/memory_types.cc",
         "common_runtime/metrics.cc",
         "common_runtime/mkl_cpu_allocator.cc",
@@ -3405,6 +3446,7 @@ tf_cuda_library(
         "common_runtime/stats_publisher_interface.cc",
         "common_runtime/step_stats_collector.cc",
         "common_runtime/tensorpool_allocator.cc",
+        "common_runtime/gpu_tensorpool_allocator.cc",
         "common_runtime/threadpool_device.cc",
         "common_runtime/threadpool_device_factory.cc",
         "graph/gradients.cc",
@@ -3538,9 +3580,11 @@ cc_library(
 
 tf_cuda_library(
     name = "direct_session_internal",
-    srcs = ["common_runtime/direct_session.cc"],
+    srcs = ["common_runtime/direct_session.cc",
+            "common_runtime/direct_session_group.cc"],
     hdrs = [
         "common_runtime/direct_session.h",
+        "common_runtime/direct_session_group.h",
         "util/env_var.h",
     ],
     copts = tf_copts(),
@@ -3560,6 +3604,42 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "gpu_cuda_graph_mode_session_internal",
+    srcs = ["common_runtime/gpu/gpu_cuda_graph_mode_session.cc"],
+    hdrs = [
+        "common_runtime/gpu/gpu_cuda_graph_mode_session.h",
+    ],
+    copts = tf_copts() + ["-fexceptions"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":direct_session_internal",
+        ":gpu_cuda_graph_mode_internal",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "gpu_cuda_graph_mode_internal",
+    srcs = ["common_runtime/gpu/gpu_cuda_graph_mode_context.cc",
+            "common_runtime/gpu/gpu_cuda_graph_mode_validate_pass.cc"],
+    hdrs = [
+        "common_runtime/gpu/gpu_cuda_graph_mode_context.h",
+        "public/session_options.h"
+    ],
+    copts = tf_copts() + ["-fexceptions"],
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":direct_session_internal",
+        ":gpu_lib",
+        ":gpu_runtime",
+        ":session_options",
+        ":gpu_cuda_graph_bfc_allocator",
     ],
     alwayslink = 1,
 )
@@ -3643,6 +3723,7 @@ cc_library(
 GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_adjustable_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
+    "common_runtime/gpu/gpu_cuda_graph_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_cudamallocasync_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
@@ -3685,6 +3766,7 @@ tf_cuda_library(
         ":framework",
         ":framework_internal",
         ":gpu_bfc_allocator",
+        ":gpu_cuda_graph_bfc_allocator",
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
@@ -3730,6 +3812,22 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+    ],
+)
+
+tf_cuda_library(
+    name = "gpu_cuda_graph_bfc_allocator",
+    srcs = [
+        "common_runtime/gpu/gpu_cuda_graph_bfc_allocator.cc",
+        "common_runtime/gpu/gpu_cuda_graph_mode_mem.cc",
+    ],
+    hdrs = ["common_runtime/gpu/gpu_cuda_graph_bfc_allocator.h",
+            "common_runtime/gpu/gpu_cuda_graph_mode_mem.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpu_bfc_allocator",
+        ":lib",
     ],
 )
 
@@ -4247,6 +4345,33 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "ev_allocator_tests",
+    srcs = [
+        "framework/ev_allocator_test.cc",
+    ],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":protos_test_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_tests(
     name = "higher_level_tests",
     size = "small",
@@ -4671,6 +4796,25 @@ tf_cc_test_gpu(
     ],
 )
 
+tf_cc_test_gpu(
+    name = "gpu_tensorpool_allocator_test",
+    size = "medium",
+    srcs = ["common_runtime/gpu_tensorpool_allocator_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":test",
+        ":test_main",
+        ":testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "gpu_device_unified_memory_test",
     size = "small",
@@ -4981,6 +5125,47 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:session_ops",
+        "//tensorflow/core/kernels:variable_ops",
+    ] + if_cuda([":cuda"]),
+)
+
+tf_cuda_cc_test(
+    name = "common_runtime_gpu_cuda_graph_mode_session_test",
+    size = "small",
+    srcs = ["common_runtime/gpu/gpu_cuda_graph_mode_session_test.cc"],
+    args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":gpu_cuda_graph_mode_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "//third_party/eigen3",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:collective_ops",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_n_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:bias_op",
+        "//tensorflow/core/kernels:snapshot_op",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
@@ -5839,4 +6024,31 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
+)
+
+cuda_library(
+    name = "embedding_gpu",
+    hdrs = [
+        "framework/embedding/batch.h"
+    ],
+    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + [
+        "framework/embedding/batch.cu.cc"
+    ],
+    copts = ["-g"] + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"])
+        + if_cuda(["-DGOOGLE_CUDA=1"]) +
+	select({
+        "//conditions:default": [],
+        "@local_config_cuda//cuda:using_nvcc": [
+            #"-nvcc_options=relaxed-constexpr",
+            #"-nvcc_options=ftz=true",
+        ],
+        "@local_config_cuda//cuda:using_clang": [
+            "-fcuda-flush-denormals-to-zero",
+        ],
+        }),
+    nocopts = "-fno-exceptions",
+    visibility = ["//visibility:public"],
+    alwayslink = 1,
+    deps = ["//tensorflow/stream_executor/cuda:cudart_stub",
+	    ":stream_executor"]
 )

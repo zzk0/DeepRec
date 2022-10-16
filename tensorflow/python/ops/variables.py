@@ -33,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
@@ -179,9 +180,11 @@ def validate_synchronization_aggregation_trainable(synchronization, aggregation,
 class InitializerOption(object):
   def __init__(self,
                initializer = None,
-               default_value_dim = 4096):
+               default_value_dim = 4096,
+               default_value_no_permission = .0):
     self.initializer = initializer
     self.default_value_dim  = default_value_dim
+    self.default_value_no_permission = default_value_no_permission
     if default_value_dim <=0:
       print("default value dim must larger than 1, the default value dim is set to default 4096.")
       default_value_dim = 4096
@@ -196,22 +199,6 @@ class MultihashOption(object):
     self.strategy = strategy
     self.operation = operation
     self.size = size
-
-@tf_export(v1=["EvictOption"])
-class EvictOption(object):
-  def __init__(self,
-               steps_to_live = None,
-               l2_weight_threshold = -1.0,
-               steps_to_live_l2reg=None,
-               l2reg_theta=None,
-               l2reg_lambda=None):
-    self.steps_to_live = steps_to_live
-    self.l2_weight_threshold = l2_weight_threshold
-    self.steps_to_live_l2reg = steps_to_live_l2reg
-    self.l2reg_theta = l2reg_theta
-    self.l2reg_lambda = l2reg_lambda
-    if self.steps_to_live != None and self.l2_weight_threshold != -1.0:
-      raise ValueError("step_to_live and l2_weight_threshold can't be enabled at same time.")
 
 @tf_export(v1=["GlobalStepEvict"])
 class GlobalStepEvict(object):
@@ -242,8 +229,31 @@ class CheckpointOption(object):
 @tf_export(v1=["StorageOption"])
 class StorageOption(object):
   def __init__(self,
-               storage_type=None):
+               storage_type=None,
+               storage_path=None,
+               storage_size=[1024*1024*1024],
+               cache_strategy = config_pb2.CacheStrategy.LFU):
     self.storage_type = storage_type
+    self.storage_path = storage_path
+    self.storage_size = storage_size
+    self.cache_strategy = cache_strategy
+    if not isinstance(storage_size, list):
+        raise ValueError("storage_size should be list type")
+    if len(storage_size) < 4:
+      for i in range(len(storage_size), 4):
+        storage_size.append(1024*1024*1024)
+    if storage_path is not None:
+      if storage_type is None:
+        raise ValueError("storage_type musnt'be None when storage_path is set")
+      else:
+        if not file_io.file_exists(storage_path):
+          file_io.recursive_create_dir(storage_path)
+    else:
+      if storage_type is not None and storage_type in [config_pb2.StorageType.LEVELDB,
+                                                       config_pb2.StorageType.SSDHASH,
+                                                       config_pb2.StorageType.DRAM_SSDHASH,
+                                                       config_pb2.StorageType.DRAM_LEVELDB]:
+        raise ValueError("storage_path musnt'be None when storage_type is set")
 
 @tf_export(v1=["EmbeddingVariableOption"])
 class EmbeddingVariableOption(object):
@@ -261,7 +271,7 @@ class EmbeddingVariableOption(object):
     self.ckpt = ckpt
     self.filter_strategy = filter_option
     self.storage_option = storage_option
-    self.init = init_option   
+    self.init = init_option
     
 @tf_export(v1=["CounterFilter"])
 class CounterFilter(object):
@@ -305,9 +315,13 @@ class EmbeddingVariableConfig(object):
                slot_index=None,
                block_num=None,
                primary=None,
-               primary_slotnum_op=None,
+               slot_num=None,
                storage_type=config_pb2.StorageType.DRAM,
-               default_value_dim=4096):
+               storage_path=None,
+               storage_size=None,
+               storage_cache_strategy=config_pb2.CacheStrategy.LFU,
+               default_value_dim=4096,
+               default_value_no_permission=.0):
     self.steps_to_live = steps_to_live
     self.steps_to_live_l2reg = steps_to_live_l2reg
     self.l2reg_theta = l2reg_theta
@@ -321,12 +335,16 @@ class EmbeddingVariableConfig(object):
     self.slot_index = slot_index
     self.block_num = block_num
     self.primary = primary
-    self.primary_slotnum_op = primary_slotnum_op
+    self.slot_num = slot_num
     self.ht_type = ht_type
     self.l2_weight_threshold = l2_weight_threshold
     self.filter_strategy = filter_strategy
     self.storage_type = storage_type
+    self.storage_path = storage_path
+    self.storage_size = storage_size
+    self.storage_cache_strategy = storage_cache_strategy
     self.default_value_dim = default_value_dim
+    self.default_value_no_permission = default_value_no_permission
 
   def reveal(self):
     if self.steps_to_live is None:
@@ -2029,7 +2047,7 @@ class RefVariable(VariableV1):
           # initial_value has been converted to a Tensor with a known type.
           self._variable = state_ops.variable_op_v2(
               shape, self._initial_value.dtype.base_dtype, name=name)
-        self.op._is_sparse=False
+        self._is_sparse=False
 
         # Manually overrides the variable's shape with the initial value's.
         if validate_shape:
@@ -2105,6 +2123,7 @@ class RefVariable(VariableV1):
       self._save_slice_info = None
     self._caching_device = None
     self._constraint = None
+    self._is_sparse=False
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""

@@ -24,6 +24,7 @@ namespace tensorflow {
 
 class Env;
 
+const string CUDA_GRAPH_MODE_TARGET_NAME = "CudaGraphModeSession";
 /// Configuration information for a Session.
 struct SessionOptions {
   /// The environment to use.
@@ -58,6 +59,20 @@ struct SessionOptions {
   ConfigProto config;
 
   SessionOptions();
+};
+
+struct CudaGraphModeSessionOptions: SessionOptions {
+  int batch_size = 0;
+  CudaGraphModeSessionOptions();
+};
+
+struct SessionGroupOptions {
+  // default 1
+  int session_num = 1;
+  Env* env;
+  string target;
+  ConfigProto config;
+  SessionGroupOptions();
 };
 
 }  // end namespace tensorflow

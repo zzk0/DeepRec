@@ -2201,8 +2201,12 @@ def get_embedding_variable(name,
         l2_weight_threshold=l2_weight_threshold,
         filter_strategy=ev_option.filter_strategy,
         storage_type = ev_option.storage_option.storage_type,
-        default_value_dim=ev_option.init.default_value_dim),
-      ht_partition_num=ev_option.ht_partition_num)
+        storage_path = ev_option.storage_option.storage_path,
+        storage_size = ev_option.storage_option.storage_size,
+        storage_cache_strategy = ev_option.storage_option.cache_strategy,
+        default_value_dim=ev_option.init.default_value_dim,
+        default_value_no_permission=ev_option.init.default_value_no_permission),
+        ht_partition_num=ev_option.ht_partition_num)
 
 
 
@@ -2222,8 +2226,7 @@ def get_embedding_variable_internal(name,
                            constraint=None,
                            steps_to_live=None,
                            init_data_source=None,
-                           ev_option = variables.EmbeddingVariableOption()
-                           ):
+                           ev_option = variables.EmbeddingVariableOption()):
   if key_dtype == dtypes.int64:
     invalid_key = 9223372036854775807
   elif key_dtype == dtypes.int32:
@@ -2233,8 +2236,12 @@ def get_embedding_variable_internal(name,
   else:
     raise ValueError("Not support key_dtype: %s, only support int64/int32/string" % key_dtype)
   l2_weight_threshold = -1.0
-  if initializer is None:
+  if initializer is None and ev_option.init.initializer is None:
     initializer = init_ops.truncated_normal_initializer()
+  elif ev_option.init.initializer is not None:
+    if initializer is not None:
+      logging.warning("Use initializer in InitializerOption.")
+    initializer = ev_option.init.initializer
   if ev_option.evict != None:
     if isinstance(ev_option.evict, variables.GlobalStepEvict):
       if steps_to_live != None:
@@ -2258,7 +2265,12 @@ def get_embedding_variable_internal(name,
         ht_type=ev_option.ht_type,
         l2_weight_threshold=l2_weight_threshold,
         filter_strategy=ev_option.filter_strategy,
-        storage_type=ev_option.storage_option.storage_type),
+        storage_type=ev_option.storage_option.storage_type,
+        storage_path=ev_option.storage_option.storage_path,
+        storage_size=ev_option.storage_option.storage_size,
+        storage_cache_strategy = ev_option.storage_option.cache_strategy,
+        default_value_dim=ev_option.init.default_value_dim,
+        default_value_no_permission=ev_option.init.default_value_no_permission),
       ht_partition_num=ev_option.ht_partition_num)
 
 
@@ -3357,7 +3369,7 @@ def default_variable_creator(next_creator=None, **kwargs):
         for i in range(emb_blocknum - 1):
           slave_evconfig = copy.copy(block_evconfig)
           slave_evconfig.emb_index = i + 1
-          slave_evconfig.primary_slotnum_op = primary_ev._slotnum_op
+          slave_evconfig._slot_num = primary_ev._slot_num
           slave_ev = kv_variable_ops.EmbeddingVariable(
             initial_value=initial_value, trainable=trainable,
             collections=collections, validate_shape=validate_shape,

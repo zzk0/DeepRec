@@ -24,6 +24,9 @@ export TF_NEED_OPENCL_SYCL=0
 export TF_ENABLE_XLA=1
 export TF_NEED_MPI=0
 
+DESTDIR=$1
+
+cd $DESTDIR
 yes "" | bash ./configure || true
 
 set -x
@@ -39,11 +42,12 @@ export TF_BUILD_BAZEL_TARGET="$TF_ALL_TARGETS "\
 "-//tensorflow/core/distributed_runtime/eager:remote_mgr_test "\
 "-//tensorflow/core/distributed_runtime:session_mgr_test "\
 "-//tensorflow/core/debug:grpc_session_debug_test "\
+"-//tensorflow/core:ev_allocator_tests "\
 
 for i in $(seq 1 3); do
     [ $i -gt 1 ] && echo "WARNING: cmd execution failed, will retry in $((i-1)) times later" && sleep 2
     ret=0
-    bazel test -c opt --config=opt --verbose_failures --local_test_jobs=40 -- $TF_BUILD_BAZEL_TARGET && break || ret=$?
+    bazel test -c opt --config=opt --verbose_failures --local_test_jobs=40 --test_output=errors -- $TF_BUILD_BAZEL_TARGET && break || ret=$?
 done
 
 exit $ret

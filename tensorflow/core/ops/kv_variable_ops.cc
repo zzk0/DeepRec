@@ -126,7 +126,7 @@ REGISTER_OP("InitializeKvVariableOp")
     .Input("resource_primary: resource")
     .Input("value: dtype")
     .Input("empty_key: Tkeys")
-    .Input("slotnum: int64")
+    .Attr("slot_num: int = 0")
     .Attr("Tkeys: {int64,int32,string}")
     .Attr("dtype: type")
     .Attr("shape: shape")
@@ -146,7 +146,12 @@ REGISTER_OP("InitializeKvVariableOp")
     .Attr("l2_weight_threshold: float =-1.0")
     .Attr("layout: string = 'normal'")
     .Attr("storage_type: int = 1")
+    .Attr("storage_path: string = '.'")
+    .Attr("storage_size: list(int) = []")
     .Attr("default_value_dim: int = 4096")
+    .Attr("default_value_no_permission: float = .0")
+    .Attr("record_freq: bool = false")
+    .Attr("record_version: bool = false")
     .SetShapeFn([](InferenceContext* c) { 
       return Status::OK();
     })
@@ -166,6 +171,7 @@ REGISTER_OP("KvVarIsInitializedOp")
     .Input("resource: resource")
     .Output("is_initialized: bool")
     .Attr("Tkeys: {int64,int32,string}")
+    .Attr("dtype: type = DT_FLOAT")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape)
     .Doc(R"doc(
 Checks whether a resource handle-based variable has been initialized.
@@ -174,6 +180,13 @@ resource: the input resource handle.
 is_initialized: a scalar boolean which is true if the variable has been
 initialized.
 )doc");
+
+REGISTER_OP("KvResourceInitCacheStrategyOp")
+    .Input("resource: resource")
+    .Attr("cache_strategy: int = 1")
+    .Attr("Tkeys: {int64,int32,string}")
+    .Attr("dtype: {float32, double}")
+    .SetShapeFn([](InferenceContext* c){return Status::OK();});
 
 Status KvVariableShapeShapeFn(InferenceContext* c) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
@@ -189,6 +202,7 @@ REGISTER_OP("KvVariableShape")
     .Output("output: out_type")
     .Attr("out_type: {int32, int64} = DT_INT32")
     .Attr("Tkeys: {int64,int32,string}")
+    .Attr("dtype: type = DT_FLOAT")
     .SetShapeFn(KvVariableShapeShapeFn)
     .Doc(R"doc(
 Returns the shape of the variable pointed to by `resource`.
@@ -226,6 +240,8 @@ REGISTER_OP("KvResourceGatherV1")
     .Input("default_value: dtype")
     .Input("counts: counts_type")
     .Attr("validate_indices: bool = true")
+    .Attr("is_use_default_value_tensor: bool = false")
+    .Attr("is_inference: bool = false")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("Tkeys: {int64,int32,string}")
@@ -276,6 +292,7 @@ REGISTER_OP("KvResourceGather")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("Tkeys: {int64,int32,string}")
+    .Attr("is_inference: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       ShapeAndType handle_shape_and_type;
       TF_RETURN_IF_ERROR(
@@ -402,13 +419,12 @@ REGISTER_OP("KvResourceImportV2")
     .Input("value: dtype")
     .Input("tensor_names: string")
     .Input("empty_key: Tkeys")
-    .Input("slotnum: int64")
+    .Attr("slot_num: int = 0")
     .Attr("shape: shape")
     .Attr("Tkeys: {int64,int32}")
     .Attr("dtype: type")
     .Attr("emb_index: int = 0")
     .Attr("slot_index: int = 0")
-    .Attr("slot_num: int = 0")
     .Attr("block_num: int = 1")
     .Attr("steps_to_live: int = 0")
     .Attr("partition_id: int = 0")
@@ -423,7 +439,31 @@ REGISTER_OP("KvResourceImportV2")
     .Attr("layout: string = 'normal'")
     .Attr("max_freq: int = 999999")
     .Attr("storage_type: int = 1")
+    .Attr("storage_path: string = '.'")
+    .Attr("storage_size: list(int) = []")
     .Attr("default_value_dim: int = 4096")
+    .Attr("default_value_no_permission: float = .0")
+    .Attr("record_freq: bool = false")
+    .Attr("record_version: bool = false")
+    .Attr("reset_version: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+          ShapeHandle handle;
+          TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+          return Status::OK();
+     })
+    .Doc(R"doc()doc");
+
+REGISTER_OP("KvResourceImportV3")
+    .Input("prefix: string")
+    .Input("resource_self: resource")
+    .Input("tensor_names: string")
+    .Input("empty_key: Tkeys")
+    .Attr("shape: shape")
+    .Attr("partition_id: int = 0")
+    .Attr("partition_num: int = 1")
+    .Attr("Tkeys: {int64,int32}")
+    .Attr("dtype: type")
+    .Attr("reset_version: bool = false")
     .SetShapeFn([](InferenceContext* c) {
           ShapeHandle handle;
           TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
@@ -458,10 +498,10 @@ REGISTER_OP("KvResourceExport")
     .Attr("Tvalues: type")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle values = c->UnknownShape();
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(values, 1, &values));
-      ShapeHandle keys = c->UnknownShapeOfRank(2);
-      ShapeHandle versions = c->UnknownShapeOfRank(3);
-      ShapeHandle freqs = c->UnknownShapeOfRank(4);
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(values, 2, &values));
+      ShapeHandle keys = c->UnknownShapeOfRank(1);
+      ShapeHandle versions = c->UnknownShapeOfRank(1);
+      ShapeHandle freqs = c->UnknownShapeOfRank(1);
       c->set_output(0, keys);
       c->set_output(1, values);
       c->set_output(2, versions);
@@ -478,19 +518,59 @@ versions: Vector of all versions present in the table.
 freqs: Vector of all freqs present in the table.
 )doc");
 
-REGISTER_OP("KvResourceInsert")
-    .Input("resource_handle: resource")
+REGISTER_OP("KvResourceGeneratePartitionedTensor")
     .Input("keys: Tkeys")
-    .Input("values: dtype")
+    .Input("values: Tvalues")
     .Input("versions: int64")
+    .Input("freqs: int64")
+    .Output("partitioned_keys: Tkeys")
+    .Output("partitioned_values: Tvalues")
+    .Output("partitioned_versions: int64")
+    .Output("partitioned_freqs: int64")
+    .Output("partial_offset: int32")
     .Attr("Tkeys: {int64,int32,string}")
-    .Attr("dtype: type")
+    .Attr("Tvalues: type")
     .SetShapeFn([](InferenceContext* c) {
-        ShapeHandle handle;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
-        // TODO(dingchen): Validate keys and values shape.
-        return Status::OK();
-        })
+      ShapeHandle partitioned_values = c->UnknownShape();
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(partitioned_values, 2, &partitioned_values));
+      ShapeHandle partitioned_keys = c->UnknownShapeOfRank(1);
+      ShapeHandle partitioned_versions = c->UnknownShapeOfRank(1);
+      ShapeHandle partitioned_freqs = c->UnknownShapeOfRank(1);
+      ShapeHandle partial_offset = c->UnknownShapeOfRank(1);
+      c->set_output(0, partitioned_keys);
+      c->set_output(1, partitioned_values);
+      c->set_output(2, partitioned_versions);
+      c->set_output(3, partitioned_freqs);
+      c->set_output(4, partial_offset);
+      return Status::OK();
+    })
     .Doc(R"doc(
+Outputs a partial offset tensor of features.
+
+keys: Vector of all keys present in the table.
+partial_offset: Vector of partial offset used for restore.
 )doc");
+
+REGISTER_OP("EVGetFrequency")
+    .Input("resource_handle: resource")
+    .Input("ids: Tkeys")
+    .Output("output: int64")
+    .Attr("Tkeys: {int64, int32}")
+    .Attr("Tvalues: type")
+    .SetShapeFn([](InferenceContext* c) {
+      return Status::OK();
+    })
+    .Doc(R"doc()doc");
+
+REGISTER_OP("EVGetVersion")
+    .Input("resource_handle: resource")
+    .Input("ids: Tkeys")
+    .Output("output: int64")
+    .Attr("Tkeys: {int64, int32}")
+    .Attr("Tvalues: type")
+    .SetShapeFn([](InferenceContext* c) {
+      return Status::OK();
+    })
+    .Doc(R"doc()doc");
+
 }  // namespace tensorflow

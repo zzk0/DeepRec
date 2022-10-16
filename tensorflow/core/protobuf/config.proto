@@ -15,6 +15,15 @@ import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
+enum ExecutorPolicy {
+  // Tensorflow executor
+  USE_NORMAL_EXECUTOR = 0;
+  // Cost model executor
+  USE_COST_MODEL_EXECUTOR = 1;
+  // Inline executor
+  USE_INLINE_EXECUTOR = 2;
+}
+
 message GPUOptions {
   // Fraction of the available GPU memory to allocate for each process.
   // 1 means to allocate all of the GPU memory, 0.5 means the process
@@ -185,12 +194,16 @@ message GPUOptions {
     // launch an additional kernel will stall until an event
     // completes.
     int32 kernel_tracker_max_pending = 9;
+
+    // When true, use CUDA cudaMallocAsync API instead of TF gpu allocator.
+    bool use_cuda_malloc_async = 10;
   }
 
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
   Experimental experimental = 9;
+  bool cuda_graph_mode_compatible = 10;
 }
 
 // Options passed to the graph optimizer
@@ -243,6 +256,10 @@ message OptimizerOptions {
   bool do_op_fusion = 7;
   int32 micro_batch_num = 9;
   bool do_smart_stage = 10;
+  bool do_smart_stage_gpu = 11;
+  bool do_async_embedding = 12;
+  int32 async_embedding_threads_num = 13;
+  int32 async_embedding_capacity = 14;
 }
 
 message GraphOptions {
@@ -357,6 +374,14 @@ message SessionMetadata {
 
   // The version is optional. If set, needs to be >= 0.
   int64 version = 2;
+}
+
+// config for cuda graph mode session
+message CudaGraphModeOptions {
+    repeated string output_names = 1;
+    int32 batch_size = 2;
+    bool allow_fallback = 3;
+    bool has_invalid_graph = 4;
 }
 
 // Session configuration parameters.
@@ -555,7 +580,20 @@ message ConfigProto {
 
   bool run_graph_mode = 203;
   bool run_graph_mode_lite = 204;
-  // Next: 205
+
+  ExecutorPolicy executor_policy = 205;
+
+  // Each session will use a independent gpu stream,
+  // now this param only use in SessionGroup.
+  bool use_per_session_stream = 206;
+  // Each session use a independent gpu stream,
+  // and every virtual gpu device has a owned gpu stream,
+  // so we will assign only one virtual gpu device
+  // to a session.
+  repeated string per_session_devices = 207;
+
+  // Next: 208
+  CudaGraphModeOptions cuda_graph_mode_options = 208;
 }
 
 // Options for a single Run() call.

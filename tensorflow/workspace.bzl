@@ -1,6 +1,6 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
@@ -16,6 +16,7 @@ load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compil
 load("//third_party:repo.bzl", "tf_http_archive")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load(
     "//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
@@ -130,11 +131,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "cudnn_frontend_archive",
         build_file = clean_dep("//third_party:cudnn_frontend.BUILD"),
         patch_file = clean_dep("//third_party:cudnn_frontend_header_fix.patch"),
-        sha256 = "498f908ced41bbf524af6b89dc4229d5cc89311bfaaed1e3794981e858629196",
-        strip_prefix = "cudnn-frontend-360d6e7164dfb7c802493fd1c0464f0d815b852a",
+        sha256 = "314569f65d5c7d05fb7e90157a838549db3e2cfb464c80a6a399b39a004690fa",
+        strip_prefix = "cudnn-frontend-0.6.2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/cudnn-frontend/archive/360d6e7164dfb7c802493fd1c0464f0d815b852a.zip",
-            "https://github.com/NVIDIA/cudnn-frontend/archive/360d6e7164dfb7c802493fd1c0464f0d815b852a.zip"
+            "https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.6.2.zip",
+            "https://github.com/AlibabaPAI/cudnn-frontend/archive/refs/tags/v0.6.2.zip",
         ],
     )
 
@@ -157,18 +158,18 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn_v1.BUILD"),
-        patch_file = clean_dep("//third_party/mkl_dnn:oneDNN-v2.3.2-expose-bf16-tp.patch"),
-        sha256 = "8cbade2dd955bc8f281d31a2e89e7ad7b11d73cd8281c30a64b2ff8e3a63f07e",
-        strip_prefix = "oneDNN-2.3.2",
+        patch_file = clean_dep("//third_party/mkl_dnn:oneDNN-v2.6.0-export-bf16-verbose-3.patch"),
+        sha256 = "9695640f55acd833ddcef4776af15e03446c4655f9296e5074b1b178dd7a4fb2",
+        strip_prefix = "oneDNN-2.6",
         urls = [
-            "https://github.com/oneapi-src/oneDNN/archive/v2.3.2.tar.gz",
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3.2.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.6.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.6.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "sparsehash_c11",
-        patch_file = clean_dep("//third_party:0001-fix-memory-leak-when-rebucket.patch"),
+        patch_file = clean_dep("//third_party:0001-Avoid-fetching-nullptr-when-use-featrue-filter.patch"),
         build_file = clean_dep("//third_party:sparsehash_c11.BUILD"),
         sha256 = "d4a43cad1e27646ff0ef3a8ce3e18540dbcb1fdec6cc1d1cb9b5095a9ca2a755",
         strip_prefix = "sparsehash-c11-2.11.1",
@@ -179,8 +180,20 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "cuCollections",
+        patch_file = clean_dep("//third_party:0001-cuco-modification-for-deeprec.patch"),
+        build_file = clean_dep("//third_party:cuco.BUILD"),
+        sha256 = "c5c77a1f96b439b67280e86483ce8d5994aa4d14b7627b1d3bd7880be6be23fa",
+        strip_prefix = "cuCollections-193de1aa74f5721717f991ca757dc610c852bb17",
+        urls = [
+            "https://github.com/NVIDIA/cuCollections/archive/193de1aa74f5721717f991ca757dc610c852bb17.zip",
+            "https://github.com/NVIDIA/cuCollections/archive/193de1aa74f5721717f991ca757dc610c852bb17.zip",
+        ],
+    )
+
+    tf_http_archive(
         name = "com_google_absl",
-        patch_file = clean_dep("//third_party:string_view_h.patch"),
+        patch_file = clean_dep("//third_party:0001-abseil.patch"),
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
         sha256 = "acd93f6baaedc4414ebd08b33bebca7c7a46888916101d8c0b8083573526d070",  # SHARED_ABSL_SHA
         strip_prefix = "abseil-cpp-43ef2148c0936ebf7cb4be6b19927a9d9d145b8f",
@@ -193,7 +206,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
-        patch_file = clean_dep("//third_party/eigen3:neon_casting_and_gpu_packet.patch"),
+        patch_file = clean_dep("//third_party/eigen3:eigen.patch"),
         sha256 = "2f046557f4093becf51b44c6339873c18e2f1ea55c4b3f3a08b7d15a1d9c6e5b",  # SHARED_EIGEN_SHA
         strip_prefix = "eigen-4fd5d1477b221fc7daf2b7f1c7e4ee4f04ceaced",
         urls = [
@@ -547,12 +560,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "curl",
         build_file = clean_dep("//third_party:curl.BUILD"),
-        sha256 = "01ae0c123dee45b01bbaef94c0bc00ed2aec89cb2ee0fd598e0d302a6b5e0a98",
-        strip_prefix = "curl-7.69.1",
+	sha256 = "ed936c0b02c06d42cf84b39dd12bb14b62d77c7c4e875ade022280df5dcc81d7",
+        strip_prefix = "curl-7.78.0",
         system_build_file = clean_dep("//third_party/systemlibs:curl.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.69.1.tar.gz",
-            "https://curl.haxx.se/download/curl-7.69.1.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.78.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.78.0.tar.gz",
         ],
     )
 
@@ -636,6 +649,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "boringssl",
+        patch_file = clean_dep("//third_party:0001-boringssl.patch"),
         sha256 = "1188e29000013ed6517168600fc35a010d58c5d321846d6a6dfee74e4c788b45",
         strip_prefix = "boringssl-7f634429a04abc48e2eb041c81c5235816c96514",
         system_build_file = clean_dep("//third_party/systemlibs:boringssl.BUILD"),
@@ -667,15 +681,15 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
-    tf_http_archive(
+    # Note: snappy is placed earlier as tensorflow's snappy does not include snappy-c
+    http_archive(
         name = "snappy",
         build_file = clean_dep("//third_party:snappy.BUILD"),
-        sha256 = "3dfa02e873ff51a11ee02b9ca391807f0c8ea0529a4924afa645fbf97163f9d4",
-        strip_prefix = "snappy-1.1.7",
-        system_build_file = clean_dep("//third_party/systemlibs:snappy.BUILD"),
+        sha256 = "16b677f07832a612b0836178db7f374e414f94657c138e6993cbfc5dcc58651f",
+        strip_prefix = "snappy-1.1.8",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/snappy/archive/1.1.7.tar.gz",
-            "https://github.com/google/snappy/archive/1.1.7.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/snappy/archive/1.1.8.tar.gz",
+            "https://github.com/google/snappy/archive/1.1.8.tar.gz",
         ],
     )
 
@@ -688,18 +702,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/0ceaec9cee96ae7658aa45686853286651f36384.tar.gz",
             "https://github.com/nvidia/nccl/archive/0ceaec9cee96ae7658aa45686853286651f36384.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
-        name = "kafka",
-        build_file = clean_dep("//third_party:kafka/BUILD"),
-        patch_file = clean_dep("//third_party/kafka:config.patch"),
-        sha256 = "cc6ebbcd0a826eec1b8ce1f625ffe71b53ef3290f8192b6cae38412a958f4fd3",
-        strip_prefix = "librdkafka-0.11.5",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
-            "https://github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
         ],
     )
 
@@ -1044,12 +1046,113 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "seastar_repo",
+        patch_file = clean_dep("//third_party:0001-seastar.patch"),
         sha256 = "bf97d343149f95983317888dd39a3231639f67c39d826413ea226f9c9c5267d4",
         strip_prefix = "seastar-b9357c525a552ad21b5609622c900e0649921712",
         build_file = str(Label("//third_party:seastar.BUILD")),
         urls = [
             "https://github.com/AlibabaPAI/seastar/archive/b9357c525a552ad21b5609622c900e0649921712.tar.gz",
             "https://github.com/AlibabaPAI/seastar/archive/b9357c525a552ad21b5609622c900e0649921712.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "lz4",
+        build_file = str(Label("//third_party:lz4.BUILD")),
+        sha256 = "658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc",
+        strip_prefix = "lz4-1.9.2/lib",
+        urls = ["https://github.com/lz4/lz4/archive/v1.9.2.tar.gz"],
+    )
+
+    http_archive(
+        name = "kafka",
+        build_file = str(Label("//third_party:kafka.BUILD")),
+        patch_cmds = [
+            "rm -f src/win32_config.h",
+            # TODO: Remove the fowllowing once librdkafka issue is resolved.
+            """sed -i.bak '\\|rd_kafka_log(rk,|,/ exceeded);/ s/^/\\/\\//' src/rdkafka_cgrp.c""",
+        ],
+        sha256 = "f7fee59fdbf1286ec23ef0b35b2dfb41031c8727c90ced6435b8cf576f23a656",
+        strip_prefix = "librdkafka-1.5.0",
+        urls = [
+            "https://mirror.tensorflow.org/github.com/edenhill/librdkafka/archive/v1.5.0.tar.gz",
+            "https://github.com/edenhill/librdkafka/archive/v1.5.0.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "arrow",
+        build_file = clean_dep("//third_party:arrow.BUILD"),
+        patches = ["//third_party:arrow.patch"],
+        sha256 = "ec3bdae6ccc08de5b5adcf9cbe7cbc085cab0ba06c8e6d3abfc3ed1cd4c1c9a2",
+        strip_prefix = "arrow-apache-arrow-5.0.0",
+        urls = [
+            "https://github.com/apache/arrow/archive/apache-arrow-5.0.0.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "brotli",
+        build_file = clean_dep("//third_party:brotli.BUILD"),
+        sha256 = "4c61bfb0faca87219ea587326c467b95acb25555b53d1a421ffa3c8a9296ee2c",
+        strip_prefix = "brotli-1.0.7",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/brotli/archive/v1.0.7.tar.gz",
+            "https://github.com/google/brotli/archive/v1.0.7.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "bzip2",
+        build_file = clean_dep("//third_party:bzip2.BUILD"),
+        sha256 = "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269",
+        strip_prefix = "bzip2-1.0.8",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+            "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "thrift",
+        build_file = clean_dep("//third_party:thrift.BUILD"),
+        sha256 = "5da60088e60984f4f0801deeea628d193c33cec621e78c8a43a5d8c4055f7ad9",
+        strip_prefix = "thrift-0.13.0",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/apache/thrift/archive/v0.13.0.tar.gz",
+            "https://github.com/apache/thrift/archive/v0.13.0.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "xsimd",
+        build_file = clean_dep("//third_party:xsimd.BUILD"),
+        sha256 = "45337317c7f238fe0d64bb5d5418d264a427efc53400ddf8e6a964b6bcb31ce9",
+        strip_prefix = "xsimd-7.5.0",
+        urls = [
+            "https://github.com/xtensor-stack/xsimd/archive/refs/tags/7.5.0.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "zstd",
+        build_file = clean_dep("//third_party:zstd.BUILD"),
+        sha256 = "a364f5162c7d1a455cc915e8e3cf5f4bd8b75d09bc0f53965b0c9ca1383c52c8",
+        strip_prefix = "zstd-1.4.4",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/facebook/zstd/archive/v1.4.4.tar.gz",
+            "https://github.com/facebook/zstd/archive/v1.4.4.tar.gz",
+        ],
+    )
+
+    http_archive(
+        name = "rapidjson",
+        build_file = clean_dep("//third_party:rapidjson.BUILD"),
+        sha256 = "30bd2c428216e50400d493b38ca33a25efb1dd65f79dfc614ab0c957a3ac2c28",
+        strip_prefix = "rapidjson-418331e99f859f00bdc8306f69eba67e8693c55e",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/miloyip/rapidjson/archive/418331e99f859f00bdc8306f69eba67e8693c55e.tar.gz",
+            "https://github.com/miloyip/rapidjson/archive/418331e99f859f00bdc8306f69eba67e8693c55e.tar.gz",
         ],
     )
 

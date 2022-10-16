@@ -242,6 +242,36 @@ Status MatMulShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status MatMulGradFilterShape(shape_inference::InferenceContext* c) {
+  ShapeHandle a;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &a));
+
+  ShapeHandle b;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &b));
+
+  bool transpose_a, transpose_b;
+  TF_RETURN_IF_ERROR(c->GetAttr("transpose_a", &transpose_a));
+  TF_RETURN_IF_ERROR(c->GetAttr("transpose_b", &transpose_b));
+  DimensionHandle output_rows = transpose_a ? c->Dim(a, 0) : c->Dim(a, 1);
+  DimensionHandle output_cols = c->Dim(b, 1);
+
+  if (transpose_b) {
+    auto tmp = output_rows;
+    output_rows = output_cols;
+    output_cols = tmp;
+  }
+
+  // Validate that the inner shapes are compatible.
+  DimensionHandle inner_a = transpose_a ? c->Dim(a, 1) : c->Dim(a, 0);
+  DimensionHandle inner_b = c->Dim(b, 0);
+  DimensionHandle merged;
+  TF_RETURN_IF_ERROR(c->Merge(inner_a, inner_b, &merged));
+
+  c->set_output(0, c->Matrix(output_rows, output_cols));
+  c->set_output(1, c->Vector(output_cols));
+  return Status::OK();
+}
+
 namespace {
 
 // Validate that an Einsum subscript contains exactly one or zero ellipsis; and
@@ -663,7 +693,8 @@ Status ShapeFromDimensions(DimensionHandle batch_dim,
 namespace {
 
 Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
-                       bool supports_explicit_padding) {
+                       bool supports_explicit_padding,
+                       string padding_attr_name = "explicit_paddings") {
   string data_format_str, filter_format_str;
   if (!c->GetAttr("data_format", &data_format_str).ok()) {
     data_format_str = "NHWC";
@@ -752,6 +783,8 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
   if (c->ValueKnown(input_depth_dim) && c->ValueKnown(filter_input_depth_dim)) {
     int64 input_depth_value = c->Value(input_depth_dim),
           filter_input_depth_value = c->Value(filter_input_depth_dim);
+    if (filter_input_depth_value == 0)
+      return errors::InvalidArgument("Depth of filter must not be 0");
     if (input_depth_value % filter_input_depth_value != 0)
       return errors::InvalidArgument(
           "Depth of input (", input_depth_value,
@@ -761,6 +794,8 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
       int64 num_groups = input_depth_value / filter_input_depth_value;
       if (c->ValueKnown(output_depth_dim)) {
         int64 output_depth_value = c->Value(output_depth_dim);
+        if (num_groups == 0)
+          return errors::InvalidArgument("Number of groups must not be 0");
         if (output_depth_value % num_groups != 0)
           return errors::InvalidArgument(
               "Depth of output (", output_depth_value,
@@ -821,6 +856,11 @@ Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c) {
 // padding.
 Status Conv2DShape(shape_inference::InferenceContext* c) {
   return Conv2DShapeImpl(c, false);
+}
+
+// Shape function for QuantizedConv2D-like operations
+Status QuantizedConv2DShape(shape_inference::InferenceContext* c) {
+  return Conv2DShapeImpl(c, true, "padding_list");
 }
 
 // TODO(mjanusz): Unify all conv/pooling shape functions.
@@ -891,6 +931,8 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   if (c->ValueKnown(input_depth_dim) && c->ValueKnown(filter_input_depth_dim)) {
     int64 input_depth_value = c->Value(input_depth_dim),
           filter_input_depth_value = c->Value(filter_input_depth_dim);
+    if (filter_input_depth_value == 0)
+      return errors::InvalidArgument("Depth of filter must not be 0");
     if (input_depth_value % filter_input_depth_value != 0)
       return errors::InvalidArgument(
           "Depth of input (", input_depth_value,
@@ -900,6 +942,8 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
       int64 num_groups = input_depth_value / filter_input_depth_value;
       if (c->ValueKnown(output_depth_dim)) {
         int64 output_depth_value = c->Value(output_depth_dim);
+        if (num_groups == 0)
+          return errors::InvalidArgument("Number of groups must not be 0");
         if (output_depth_value % num_groups != 0)
           return errors::InvalidArgument(
               "Depth of output (", output_depth_value,
@@ -1578,7 +1622,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
   const int32 concat_dim = concat_dim_t->scalar<int32>()();
 
   // Minimum required number of dimensions.
-  const int min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;
+  const int64 min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;
 
   ShapeHandle output_before;
   ShapeHandle output_after;
@@ -2079,6 +2123,9 @@ Status SparseReduceShapeFn(InferenceContext* c) {
 
     int64 ndims = shape_vec.size();
     std::unordered_set<int64> axes;
+    if (ndims == 0)
+      return errors::InvalidArgument(
+          "Number of dims in shape tensor must not be 0");
     for (int i = 0; i < axes_vec.size(); i++) {
       axes.insert((axes_vec(i) + ndims) % ndims);
     }

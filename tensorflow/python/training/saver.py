@@ -183,7 +183,7 @@ class BaseSaverBuilder(object):
     # save_incr_sparse     1           1             2              3
     # not save_incr_sparse -           -             2              2
 
-    save_incr_sparse = saveable.op.op._is_sparse and self._incremental_include_normal_var
+    save_incr_sparse = saveable.is_sparse and self._incremental_include_normal_var
     # EV
     if isinstance(saveable, BaseSaverBuilder.EmbeddingVariableSaveable):
       return saveable.name, True
@@ -227,10 +227,16 @@ class BaseSaverBuilder(object):
 
     for saveable in saveables:
       if isinstance(saveable, BaseSaverBuilder.EmbeddingVariableSaveable):
-        tensor_names.append(saveable.name)
-        tensors.append(saveable.handle_op)
-        tensor_slices.append("")
-        ev_key_types.append(saveable.key_type)
+        if "GPU" in saveable.var.device:
+          for spec in saveable.specs:
+            tensor_names.append(spec.name)
+            tensors.append(spec.tensor)
+            tensor_slices.append(spec.slice_spec)
+        else:
+          tensor_names.append(saveable.name)
+          tensors.append(saveable.handle_op)
+          tensor_slices.append("")
+          ev_key_types.append(saveable.key_type)
         continue
       for spec in saveable.specs:
         tensor_names.append(spec.name)
@@ -1762,6 +1768,7 @@ def export_meta_graph(filename=None,
                       clear_extraneous_savers=False,
                       strip_default_attrs=False,
                       save_debug_info=False,
+                      incr_saver_def=None,
                       **kwargs):
   # pylint: disable=line-too-long
   """Returns `MetaGraphDef` proto.
@@ -1830,6 +1837,7 @@ def export_meta_graph(filename=None,
       clear_extraneous_savers=clear_extraneous_savers,
       strip_default_attrs=strip_default_attrs,
       save_debug_info=save_debug_info,
+      incr_saver_def=incr_saver_def,
       **kwargs)
   return meta_graph_def
 

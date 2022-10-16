@@ -48,6 +48,7 @@ limitations under the License.
 
 namespace tensorflow {
 class GPUKernelTracker;
+class DeviceResourceMgrMap;
 
 class BaseGPUDevice : public LocalDevice {
  public:
@@ -56,6 +57,14 @@ class BaseGPUDevice : public LocalDevice {
                 TfGpuId tf_gpu_id, const string& physical_device_desc,
                 Allocator* gpu_allocator, Allocator* cpu_allocator,
                 bool sync_every_op, int32 max_streams);
+  BaseGPUDevice(const SessionOptions& options, const string& name,
+                const string& physical_name, Bytes memory_limit,
+                const DeviceLocality& locality, TfGpuId tf_gpu_id,
+                const string& physical_device_desc,
+                Allocator* gpu_allocator, Allocator* cpu_allocator,
+                bool sync_every_op, int32 max_streams,
+                const DeviceResourceMgrMap* dev_rmgr_map,
+                const DeviceGlobalThreadPoolOptions& opt);
 
   ~BaseGPUDevice() override;
 
@@ -128,6 +137,14 @@ class BaseGPUDevice : public LocalDevice {
     return streams_.front()->compute->implementation()->GpuStreamMemberHack();
   }
 
+  se::Stream* GetDefaultTFStream() {
+    return streams_.front()->compute;
+  }
+
+  void SetSingleStreamMode();
+  void ResetStreamMode();
+  bool IsSingleStreamMode() override { return is_single_stream_mode_; }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
@@ -149,6 +166,8 @@ class BaseGPUDevice : public LocalDevice {
   class StreamGroupFactory;
 
   gtl::InlinedVector<StreamGroup*, 4> streams_;
+  StreamGroup* stream_group_backup_ = nullptr;
+  StreamGroup single_stream_mode_group_;
   mutex scratch_init_mutex_;
   gtl::InlinedVector<char*, 4> scratch_;
   std::vector<GPUDeviceContext*> device_contexts_;
@@ -162,6 +181,7 @@ class BaseGPUDevice : public LocalDevice {
   std::unique_ptr<GPUKernelTracker> kernel_tracker_;
   int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
+  bool is_single_stream_mode_ = false;
 
   // Initialize scractch buffers used by Eigen.
   Status InitScratchBuffers();
@@ -320,6 +340,10 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<std::unique_ptr<Device>>* devices,
+                       const DeviceResourceMgrMap* dev_rmgr_map,
+                       const DeviceGlobalThreadPoolOptions& opt) override;
 
   struct InterconnectMap {
     // Name of interconnect technology, if known.
@@ -362,11 +386,25 @@ class BaseGPUDeviceFactory : public DeviceFactory {
                          int64 memory_limit, const DeviceLocality& dev_locality,
                          std::vector<std::unique_ptr<Device>>* devices);
 
+  Status CreateGPUDevice(const SessionOptions& options,
+      const string& name_prefix, TfGpuId tf_gpu_id,
+      int64 memory_limit, const DeviceLocality& dev_locality,
+      std::vector<std::unique_ptr<Device>>* devices,
+      const DeviceResourceMgrMap* dev_rmgr_map,
+      const DeviceGlobalThreadPoolOptions& opt);
+
   virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
       const SessionOptions& options, const string& name, Bytes memory_limit,
       const DeviceLocality& dev_locality, TfGpuId tf_gpu_id,
       const string& physical_device_desc, Allocator* gpu_allocator,
       Allocator* cpu_allocator) = 0;
+
+  virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
+      const SessionOptions& options, const string& name, const string& physical_name,
+      Bytes memory_limit, const DeviceLocality& locality, TfGpuId tf_gpu_id,
+      const string& physical_device_desc, Allocator* gpu_allocator,
+      Allocator* cpu_allocator, const DeviceResourceMgrMap* dev_rmgr_map,
+      const DeviceGlobalThreadPoolOptions& opt) = 0;
 
   Status EnablePeerAccess(const std::vector<PlatformGpuId>& visible_gpu_order);
 

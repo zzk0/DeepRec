@@ -109,8 +109,8 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"_Retval", NC_RETVAL},
         {"_DeviceRetval", NC_RETVAL},
         {"_XlaMerge", NC_MERGE},
-        {"DataBufferPut", NC_DATA_BUFFER_PUT},
-        {"DataBufferTake", NC_DATA_BUFFER_TAKE},
+        {"TensorBufferPut", NC_TENSOR_BUFFER_PUT},
+        {"TensorBufferTake", NC_TENSOR_BUFFER_TAKE},
     });
 
 #undef REF_CLASS
@@ -836,6 +836,15 @@ Status Graph::AddWhileContext(StringPiece frame_name,
   }
   *result = &pair.first->second;
   return Status::OK();
+}
+
+bool Graph::IsTrainingGraph() const {
+  for (Node* node : op_nodes()) {
+    if (node->name().find("gradient") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::unordered_map<string, Node*> Graph::BuildNodeNameIndex() const {

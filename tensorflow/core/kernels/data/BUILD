@@ -5,6 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_kernel_library",
+    "pybind_extension",
 )
 
 package(
@@ -1079,7 +1080,7 @@ tf_kernel_library(
     name = "kafka_dataset_op",
     srcs = ["kafka_dataset_op.cc"],
     deps = [
-        "@kafka150",
+        "@kafka",
         ":name_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1300,7 +1301,10 @@ tf_kernel_library(
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels/data/experimental:dataset_kernels",
-    ],
+    ] + select({
+        "//tensorflow:with_parquet_dataset_support":[":parquet_dataset_ops",],
+        "//conditions:default": [],
+    }),
 )
 
 tf_kernel_library(
@@ -1364,4 +1368,71 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+)
+
+cc_library(
+    name = "parquet_dataset_ops",
+    srcs = select({"//tensorflow:with_parquet_dataset_support": [
+            "parquet_dataset_ops.cc",
+            "parquet_batch_reader.h",
+            "parquet_batch_reader.cc",
+        ],
+        "//conditions:default": [],
+    }),
+    hdrs = select({"//tensorflow:with_parquet_dataset_support": [
+            "parquet_dataset_ops.h"
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":dataset_ops",
+        "//tensorflow/core:framework",
+    ] + select({
+        "//tensorflow:with_parquet_dataset_support":[":arrow_util",],
+        "//conditions:default": [],
+    }),
+)
+
+pybind_extension(
+    name = "_parquet_pybind",
+    srcs = select({"//tensorflow:with_parquet_dataset_support": [
+            "parquet_pybind.cc"
+        ],
+        "//conditions:default": [],
+    }),
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    module_name = "_parquet_pybind",
+    deps = [
+        "@pybind11",
+    ] + select({
+        "//tensorflow:with_parquet_dataset_support":[":arrow_util",],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "arrow_util",
+    srcs = select({"//tensorflow:with_parquet_dataset_support": [
+            "arrow_util.cc",
+            "eigen.h"
+        ],
+        "//conditions:default": [],
+    }),
+    hdrs = select({"//tensorflow:with_parquet_dataset_support": [
+            "arrow_util.h"
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//third_party/eigen3",
+        "//tensorflow/core:framework",
+    ] + select({
+        "//tensorflow:with_parquet_dataset_support":["@arrow",],
+        "//conditions:default": [],
+    }),
+    defines = [
+        "DEEPREC_ARROW_HDFS",
+        "DEEPREC_ARROW_ZEROCOPY",
+    ]
 )

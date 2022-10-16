@@ -520,38 +520,38 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testFillFloat(self):
-    with self.session(use_gpu=False):
-      values = constant_op.constant(
-          [0.0, 10.0, 13.0, 14.0, 32.0, 33.0], dtype=dtypes.float64)
-      default_value = constant_op.constant(-1.0, dtype=dtypes.float64)
-      sp_input = sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0], [1, 0], [1, 3], [1, 4], [3, 2], [3, 3]]),
-          values=values,
-          dense_shape=np.array([5, 6]))
-      sp_output, empty_row_indicator = (sparse_ops.sparse_fill_empty_rows(
-          sp_input, default_value))
-      output, empty_row_indicator_out = self.evaluate(
-          [sp_output, empty_row_indicator])
+    for test_on_gpu in [False, True]:
+    	with self.session(use_gpu=test_on_gpu):
+    	  values = constant_op.constant(
+    	      [0.0, 10.0, 13.0, 14.0, 32.0, 33.0], dtype=dtypes.float64)
+    	  default_value = constant_op.constant(-1.0, dtype=dtypes.float64)
+    	  sp_input = sparse_tensor.SparseTensorValue(
+    	      indices=np.array([[0, 0], [1, 0], [1, 3], [1, 4], [3, 2], [3, 3]]),
+    	      values=values,
+    	      dense_shape=np.array([5, 6]))
+    	  sp_output, empty_row_indicator = (sparse_ops.sparse_fill_empty_rows(
+    	      sp_input, default_value))
+    	  output, empty_row_indicator_out = self.evaluate(
+    	      [sp_output, empty_row_indicator])
+    	  self.assertAllEqual(output.indices, [[0, 0], [1, 0], [1, 3], [1, 4],
+    	                                       [2, 0], [3, 2], [3, 3], [4, 0]])
+    	  self.assertAllClose(output.values, [0, 10, 13, 14, -1, 32, 33, -1])
+    	  self.assertAllEqual(output.dense_shape, [5, 6])
+    	  self.assertAllEqual(empty_row_indicator_out,
+    	                      np.array([0, 0, 1, 0, 1]).astype(np.bool))
 
-      self.assertAllEqual(output.indices, [[0, 0], [1, 0], [1, 3], [1, 4],
-                                           [2, 0], [3, 2], [3, 3], [4, 0]])
-      self.assertAllClose(output.values, [0, 10, 13, 14, -1, 32, 33, -1])
-      self.assertAllEqual(output.dense_shape, [5, 6])
-      self.assertAllEqual(empty_row_indicator_out,
-                          np.array([0, 0, 1, 0, 1]).astype(np.bool))
-
-      values_grad_err = gradient_checker.compute_gradient_error(
-          values, values.shape.as_list(), sp_output.values, [8], delta=1e-8)
-      self.assertGreater(values_grad_err, 0)
-      self.assertLess(values_grad_err, 1e-8)
-
-      default_value_grad_err = gradient_checker.compute_gradient_error(
-          default_value,
-          default_value.shape.as_list(),
-          sp_output.values, [8],
-          delta=1e-8)
-      self.assertGreater(default_value_grad_err, 0)
-      self.assertLess(default_value_grad_err, 1e-8)
+    	  values_grad_err = gradient_checker.compute_gradient_error(
+    	      values, values.shape.as_list(), sp_output.values, [8], delta=1e-8)
+    	  self.assertGreater(values_grad_err, 0)
+    	  self.assertLess(values_grad_err, 1e-8)
+    	
+    	  default_value_grad_err = gradient_checker.compute_gradient_error(
+    	      default_value,
+    	      default_value.shape.as_list(),
+    	      sp_output.values, [8],
+    	      delta=1e-8)
+    	  self.assertGreater(default_value_grad_err, 0)
+    	  self.assertLess(default_value_grad_err, 1e-8)
 
   def testFillString(self):
     with test_util.force_cpu():
@@ -772,6 +772,39 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
           self._testSparseReduceShape(sp_t, [-1], 2, keep_dims, do_sum)
           self._testSparseReduceShape(sp_t, [1, -2], 2, keep_dims, do_sum)
 
+  def testIntegerOverflow(self):
+    with self.cached_session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_reduce_max(
+            input_indices=[[1, 2], [3, 4]],
+            input_shape=[2**32, 2**31],
+            input_values=[1, 3],
+            reduction_axes=[0],
+            keep_dims=False,
+            name=None)
+
+        self.evaluate(res)
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_reduce_max_sparse(
+            input_indices=[[1, 2], [3, 4]],
+            input_shape=[2**32, 2**31],
+            input_values=[1, 3],
+            reduction_axes=[0],
+            keep_dims=False,
+            name=None)
+
+        self.evaluate(res)
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_reduce_sum(
+            input_indices=[[1, 2], [3, 4]],
+            input_shape=[2**32, 2**31],
+            input_values=[1, 3],
+            reduction_axes=[0],
+            keep_dims=False,
+            name=None)
+
+        self.evaluate(res)
+
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
@@ -934,6 +967,25 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
         err = gradient_checker.compute_gradient_error(x_tf.values, (nnz,),
                                                       y_tf.values, (nnz,))
         self.assertLess(err, 1e-4)
+
+  def testIntegerOverflow(self):
+    with self.cached_session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_softmax(
+            sp_indices=[[1, 1]],
+            sp_values=[2.0],
+            sp_shape=[2**32, 2**31],
+            name=None)
+
+        self.evaluate(res)
+
+  def testReshapeNegativeShape(self):
+    with self.cached_session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_softmax(
+            sp_indices=[[1, 1]], sp_values=[2.0], sp_shape=[-1, 1], name=None)
+
+        self.evaluate(res)
 
 
 class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):

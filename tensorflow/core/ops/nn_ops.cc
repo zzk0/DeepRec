@@ -181,9 +181,7 @@ REGISTER_OP("FusedBatchNorm")
     .Output("reserve_space_2: T")
     .Attr("T: {float}")
     .Attr("epsilon: float = 0.0001")
-#ifdef COMPAT_WITH_V2
     .Attr("exponential_avg_factor: float = 1.0")
-#endif
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
@@ -202,9 +200,7 @@ REGISTER_OP("FusedBatchNormV2")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-#ifdef COMPAT_WITH_V2
     .Attr("exponential_avg_factor: float = 1.0")
-#endif
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
@@ -224,9 +220,7 @@ REGISTER_OP("FusedBatchNormV3")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-#ifdef COMPAT_WITH_V2
     .Attr("exponential_avg_factor: float = 1.0")
-#endif
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
@@ -244,16 +238,14 @@ REGISTER_OP("_FusedBatchNormEx")
     .Output("reserve_space_1: U")
     .Output("reserve_space_2: U")
     .Output("reserve_space_3: U")
-#ifdef ENABLE_MKLDNN_V1
+#ifdef INTEL_MKL
     .Attr("T: {half, float, bfloat16}")
 #else
     .Attr("T: {half, float}")
 #endif
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-#ifdef COMPAT_WITH_V2
     .Attr("exponential_avg_factor: float = 1.0")
-#endif
     .Attr("num_side_inputs: int >= 0 = 0")
     .Attr("activation_mode: string = \"Identity\"")
     .Attr(GetConvnetDataFormat2D3DAttrString())
@@ -317,6 +309,41 @@ REGISTER_OP("FusedBatchNormGradV3")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
+
+// --------------------------------------------------------------------------
+REGISTER_OP("FusedLayerNorm")
+    .Input("x: T")
+    .Input("gamma: float")
+    .Input("beta: float")
+    .Output("y: T")
+    .Output("mean: float")
+    .Output("rvariance: float")
+    //.Attr("T: {float, bfloat16}")
+    .Attr("T: {float}")
+    .Attr("epsilon: float = 1e-8")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext *c)
+                {
+                    c->set_output(0, c->input(0));
+                    return Status::OK();
+                });
+
+REGISTER_OP("FusedLayerNormGrad")
+    .Input("y_grad: T")
+    .Input("x: T")
+    .Input("mean: float")
+    .Input("rvariance: float")
+    .Input("gamma: float")
+    .Output("x_grad: T")
+    .Output("gamma_grad: float")
+    .Output("beta_grad: float")
+    //.Attr("T: {float, bfloat16}")
+    .Attr("T: {float}")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext *c)
+                {
+                    c->set_output(0, c->input(0));
+                    return Status::OK();
+                });
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BiasAdd")
@@ -631,9 +658,9 @@ REGISTER_OP("_FusedDepthwiseConv2dNative")
     // Attributes for the LeakyRelu ----------------------------------------- //
     .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
-    
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 #endif
+
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Conv3D")
@@ -2612,9 +2639,7 @@ REGISTER_OP("_MklFusedBatchNorm")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-#ifdef COMPAT_WITH_V2
     .Attr("exponential_avg_factor: float = 1.0")
-#endif
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
@@ -2762,6 +2787,7 @@ REGISTER_OP("_MklFusedBatchNormV2")
     .Attr("T: {bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
@@ -3176,6 +3202,81 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       // Since activations are not requantized per channel, `min_output`
       // and `max_output` are scalars.
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+// Fusion of Quantized Conv2D, BiasAdd, Relu, and Sum.
+REGISTER_OP("QuantizedConv2DWithBiasReluAndSum")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("summand: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
+    .Attr("alpha: float = 0.0")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
+      ShapeHandle unused, channel;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
+      c->set_output(1, channel);
+      c->set_output(2, channel);
+      return Status::OK();
+    });
+
+REGISTER_OP("QuantizedConv2DWithBiasReluAndSumAndRequantize")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: Tbias")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Input("summand: Tsummand")
+    .Input("min_summand: float")
+    .Input("max_summand: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("Tsummand: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QUINT8")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
+    .Attr("alpha: float = 0.0")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
+      ShapeHandle unused, channel;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
