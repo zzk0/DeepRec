@@ -2,7 +2,7 @@
 
 ## 背景
 
-在一个通常的TensorFlow训练任务中通常由样本数据的读取，图计算构成，样本数据的读取属于IO bound操作，在整个E2E的耗时占据表较大的百分比，从而拖慢训练任务，同时并不能高效的利用计算资源（CPU、GPU）。DeepRec已经提供了stage 功能，它的思想来源于TensorFlow的StagingArea功能，我们在DeepRec提供了API `tf.staged`，用户通过显式的指定图中哪一部分需要stage，以及在Session创建的时候加入`tf.make_prefetch_hook()`在TensorFlow runtime驱动异步执行，从而提高整张图的执行效率。
+在一个通常的TensorFlow训练任务中通常由样本数据的读取，图计算构成，样本数据的读取属于IO bound操作，在整个E2E的耗时占据比较大的百分比，从而拖慢训练任务，同时并不能高效的利用计算资源（CPU、GPU）。DeepRec已经提供了stage 功能，它的思想来源于TensorFlow的StagingArea功能，我们在DeepRec提供了API `tf.staged`，用户通过显式的指定图中哪一部分需要stage，以及在Session创建的时候加入`tf.make_prefetch_hook()`在TensorFlow runtime驱动异步执行，从而提高整张图的执行效率。
 
 ## 用户接口
 
