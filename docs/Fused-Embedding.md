@@ -27,7 +27,7 @@ W = tf.feature_column.embedding_column(categorical_column=columns,
 ids={}
 ids["col_emb"] = tf.SparseTensor(indices=[[0,0],[1,1],[2,2],[3,3],[4,4]], values=tf.cast([1,2,3,4,5], tf.dtypes.int64), dense_shape=[5, 4])
 
-# 传入设置了 use_fused_lookup 的 EmbeddingColumn 实例
+# 传入设置了 do_fusion 的 EmbeddingColumn 实例
 emb = tf.feature_column.input_layer(ids, [W])
 fun = tf.multiply(emb, 2.0, name='multiply')
 loss = tf.reduce_sum(fun, name='reduce_sum')
