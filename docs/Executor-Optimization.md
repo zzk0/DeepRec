@@ -37,7 +37,7 @@ os.environ['STOP_NODE_STATS_STEP'] = "500"
 ```
 上述示例表示Trace 200～500区间的执行指标。
 如果START_NODE_STATS_STEP小于STOP_NODE_STATS_STEP，会Disable此Trace功能，后续CostModel计算也不会被执行。
-同时在用户脚本中，需要增加增加下列代码来开启基于CostModel的Executor功能，
+同时在用户脚本中，需要增加增加下列代码来开启基于CostModel的Executor功能。
 ```
 sess_config = tf.ConfigProto()
 sess_config.executor_policy = tf.ExecutorPolicy.USE_COST_MODEL_EXECUTOR
