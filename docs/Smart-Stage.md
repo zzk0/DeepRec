@@ -5,7 +5,7 @@ DeepRec已经提供了stage 功能，该功能可以实现IO Bound操作和计�
 由于`tf.staged`需要用户指定stage的边界，一方面会增加使用难度，另一方面会导致stage颗粒度不够精细，难以做到更多op的异步执行。因此我们提出了SmartStage功能。用户不需要对TF Graph有OP级别理解的情况下，就可以使stage发挥最大的性能提升。
 
 ## 功能说明
-在用户的原图中有stage阶段的前提下，通过开启smart stage功能，自动化的寻找最大可以stage的范围，修改实际物理计算图（不影响Graphdef图），从而提高性能。
+在用户的原图中有stage阶段的前提下，通过开启smart stage功能，自动化的寻优最大可以stage的范围，修改实际物理计算图（不影响Graphdef图），从而提高性能。
 
 **注意**：该功能的先决条件是，用户的原图中存在至少一个stage阶段
 

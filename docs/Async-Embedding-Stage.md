@@ -2,7 +2,7 @@
 
 ## 背景
 
-在分布式训练的场景下，随着稀疏模型越来越复杂，模型的输入特征也越来越多。这导致每步训练时worker节点需要在ps节点进行大量的Embedding lookup操作，该操作的在整个端到端的耗时也不断增长，成为模型训练速度的瓶颈，导致不能高效地利用计算资源。
+在分布式训练的场景下，随着稀疏模型越来越复杂，模型的输入特征也越来越多。这导致每步训练时worker节点需要在ps节点进行大量的Embedding lookup操作，该操作在整个端到端的耗时也不断增长，成为模型训练速度的瓶颈，导致不能高效地利用计算资源。
 
 DeepRec提供了Embedding lookup异步化的功能，该功能能够自动地将Embedding lookup部分子图划分出来，并实现与计算主图部分的异步执行，从而实现通信过程与计算过程的重叠，消除模型通信瓶颈对训练的影响，提高计算资源利用率。优化整张图的执行效率，提升训练性能。
 
@@ -54,9 +54,7 @@ sess_config.graph_options.optimizer_options.async_embedding_capacity = 4
 **注意事项**
 
 1. `async_embedding_threads_num` 并不是越大越好，只需要可以让计算主图部分不必等待embedding lookup子图的结果即可，数量更大会抢占模型训练的计算资源，同时也会占用更多的通信带宽。建议按下述公式设置，可以从1开始向上调整。
-   $$
-   async\_embedding\_threads\_num >= Embedding\ lookup\ 子图执行耗时 / 计算主图执行耗时
-   $$
+   $$async\_embedding\_threads\_num >= Embedding lookup 子图执行耗时 / 计算主图执行耗时$$
 
 2. `async_embedding_capacity` 更大会消耗更多的内存或缓存。同时也会造成缓存的embedding lookup子图结果与从PS端获取的最新结果有较大差异，造成训练收敛慢。建议设置为`async_embedding_threads_num` 的大小，可以从1开始向上调整。
 
