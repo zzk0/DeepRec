@@ -6,7 +6,7 @@ DeepRec中提供了AutoGraphFusion功能，该功能提供了内置的一组子�
 Auto Graph Fusion主要包含两部分功能：
 
 1. 透明地将满足特定Pattern的Op组合替换为等价的Macro Op，通过替换成Macro Op的方式可以节约调度与访存开销
-1. 为了解决大量小Op执行中调度开销占比高导致整个图执行效率低的问题，通过使用Op合并将大量小Op以合理的粒度的自动替换为合并Op，以减少调度小Op的开销问题。
+2. 为了解决大量小Op执行中调度开销占比高导致整个图执行效率低的问题，通过使用Op合并将大量小Op以合理的粒度的自动替换为合并Op，以减少调度小Op的开销问题。
 ## 使用方法
 通过session config中的do_op_fusion开关控制Auto Op Fusion功能的打开与关闭
 ```python
@@ -17,16 +17,22 @@ with tf.Session(config=config) as sess:
 ```
 ## 可优化子图
 目前支持以下几种子图的优化：
-1.![image.png](Auto-Fusion/img_1.png)
 
-2.![image.png](Auto-Fusion/img_2.png)
+1. ![image.png](Auto-Fusion/img_1.png)
+
+2. ![image.png](Auto-Fusion/img_2.png)
 
 3. ![image.png](Auto-Fusion/img_3.png)
-3. ![image.png](Auto-Fusion/img_4.png)
-3. ![image.png](Auto-Fusion/img_5.png)
-3. ![image.png](Auto-Fusion/img_6.png)
-3. ![image.png](Auto-Fusion/img_7.png)
-3. ![image.png](Auto-Fusion/img_8.png)
+
+4. ![image.png](Auto-Fusion/img_4.png)
+
+5. ![image.png](Auto-Fusion/img_5.png)
+
+6. ![image.png](Auto-Fusion/img_6.png)
+
+7. ![image.png](Auto-Fusion/img_7.png)
+
+8. ![image.png](Auto-Fusion/img_8.png)
 
 
 
